@@ -1,0 +1,55 @@
+{
+  "_comment": "Cross-implementation golden vectors. app (vitest) and firmware (native Unity) MUST both pass these. 'expectedLinear' is renderCue() output BEFORE masterBrightness and BEFORE gamma. Rounding is round-half-up, clamp [0,255].",
+
+  "codec": {
+    "_comment": "One worked example: a single 5s solid-red cue at full brightness. Little-endian. Total = 5 header + 16 cue = 21 bytes.",
+    "sequence": {
+      "version": 1,
+      "pixelCount": 30,
+      "cues": [
+        { "effect": 0, "durationMs": 5000, "colorA": [255, 0, 0], "colorB": [0, 0, 0], "param1": 0, "param2": 0, "brightness": 255 }
+      ]
+    },
+    "bytes": [1, 30, 0, 1, 0, 0, 136, 19, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0],
+    "hex": "011E0001000088130000FF00000000000000FF0000"
+  },
+
+  "effects": [
+    {
+      "name": "solid scales by brightness",
+      "cue": { "effect": 0, "durationMs": 1000, "colorA": [255, 0, 0], "colorB": [0, 0, 0], "param1": 0, "param2": 0, "brightness": 128 },
+      "elapsedMs": 250,
+      "expectedLinear": [128, 0, 0]
+    },
+    { "name": "fade start = colorA",
+      "cue": { "effect": 1, "durationMs": 1000, "colorA": [255, 0, 0], "colorB": [0, 0, 255], "param1": 0, "param2": 0, "brightness": 255 },
+      "elapsedMs": 0, "expectedLinear": [255, 0, 0] },
+    { "name": "fade mid = 50/50 lerp",
+      "cue": { "effect": 1, "durationMs": 1000, "colorA": [255, 0, 0], "colorB": [0, 0, 255], "param1": 0, "param2": 0, "brightness": 255 },
+      "elapsedMs": 500, "expectedLinear": [128, 0, 128] },
+    { "name": "fade end = colorB",
+      "cue": { "effect": 1, "durationMs": 1000, "colorA": [255, 0, 0], "colorB": [0, 0, 255], "param1": 0, "param2": 0, "brightness": 255 },
+      "elapsedMs": 1000, "expectedLinear": [0, 0, 255] },
+    { "name": "breathe trough at phase 0",
+      "cue": { "effect": 2, "durationMs": 4000, "colorA": [0, 255, 0], "colorB": [0, 0, 0], "param1": 100, "param2": 0, "brightness": 255 },
+      "elapsedMs": 0, "expectedLinear": [0, 0, 0] },
+    { "name": "breathe peak at half period",
+      "cue": { "effect": 2, "durationMs": 4000, "colorA": [0, 255, 0], "colorB": [0, 0, 0], "param1": 100, "param2": 0, "brightness": 255 },
+      "elapsedMs": 500, "expectedLinear": [0, 255, 0] },
+    { "name": "breathe half at quarter period",
+      "cue": { "effect": 2, "durationMs": 4000, "colorA": [0, 255, 0], "colorB": [0, 0, 0], "param1": 100, "param2": 0, "brightness": 255 },
+      "elapsedMs": 250, "expectedLinear": [0, 128, 0] },
+    { "name": "strobe on within duty window",
+      "cue": { "effect": 3, "durationMs": 4000, "colorA": [255, 255, 255], "colorB": [0, 0, 0], "param1": 100, "param2": 128, "brightness": 255 },
+      "elapsedMs": 400, "expectedLinear": [255, 255, 255] },
+    { "name": "strobe off past duty window",
+      "cue": { "effect": 3, "durationMs": 4000, "colorA": [255, 255, 255], "colorB": [0, 0, 0], "param1": 100, "param2": 128, "brightness": 255 },
+      "elapsedMs": 600, "expectedLinear": [0, 0, 0] }
+  ],
+
+  "gamma": [
+    { "in": 0, "out": 0, "tolerance": 0 },
+    { "in": 255, "out": 255, "tolerance": 0 },
+    { "in": 128, "out": 56, "tolerance": 1 }
+  ]
+}

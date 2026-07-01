@@ -1,0 +1,21 @@
+# Node / Next / app
+app/node_modules/
+app/.next/
+app/out/
+app/dist/
+app/.env*
+node_modules/
+
+# Capacitor native
+app/android/
+app/ios/
+
+# PlatformIO / firmware
+firmware/.pio/
+firmware/.pioenvs/
+firmware/.piolibdeps/
+
+# misc
+.DS_Store
+*.log
+*.tsbuildinfo
