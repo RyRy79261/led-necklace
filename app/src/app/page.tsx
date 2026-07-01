@@ -11,7 +11,7 @@ const SURFACES: Array<{ href: string; title: string; blurb: string }> = [
     href: '/preview',
     title: 'Preview',
     blurb:
-      'Watch the sequence play on a virtual necklace. The canvas runs the exact same player + effect engine the firmware uses, gamma-corrected.',
+      'Watch the sequence play on a virtual LED panel (3 strips × 10). The canvas runs the exact same player + effect engine the firmware uses, gamma-corrected.',
   },
   {
     href: '/remote',

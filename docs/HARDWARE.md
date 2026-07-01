@@ -3,6 +3,11 @@
 > Status: **design, not yet built.** Pins and firmware are fixed; the physical build and
 > on-board bring-up are the remaining work. Values below are the intended build.
 
+**Form factor:** the 30 LEDs are a rigid **3 × 10 panel** — 3 vertical strips of 10, chained
+DIN→DOUT, mounted side-by-side as columns (think a small LED matrix worn on the front of the
+body), **not** a draped necklace. The pixel index maps as strip (column) = `floor(i / 10)`,
+row = `i % 10`, top → bottom.
+
 ## Bill of materials
 
 | Part | Notes |
@@ -64,8 +69,9 @@ is needed**.
 
 - Use a **protected LiPo** and an **inline fuse/PTC** — a short in a worn cell is a burn risk.
 - Mechanically protect the cell (no bare pouch that can be crushed/flexed/punctured).
-- **Strain-relieve every solder joint** — a necklace flexes constantly and joints crack; use
-  flexible wire and anchor the strip. A detachable JST-SM link saves the joints during packing.
+- **Mount the strips to the rigid panel** and **strain-relieve the cable where it exits the
+  panel** — the panel itself doesn't flex, but the lead to the board/battery gets tugged during
+  wear and packing. A detachable JST-SM link at the panel edge saves the joints.
 - Diffuse the LEDs (raw WS2812B are harsh point sources) for a better stage look.
 
 ## Bring-up checklist (hardware day)

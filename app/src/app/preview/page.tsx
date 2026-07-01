@@ -8,7 +8,8 @@ export default function PreviewPage() {
         <p className="max-w-2xl text-sm text-neutral-400">
           Offline simulator. Runs the exact same player state machine and effect
           engine the firmware uses, then applies master brightness and gamma
-          before painting the virtual necklace — no hardware required. Loads your
+          before painting the virtual LED panel (3 strips of 10) — no hardware
+          required. Loads your
           authored show from local storage, or a built-in demo.
         </p>
       </section>
