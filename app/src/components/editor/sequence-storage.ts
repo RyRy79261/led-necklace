@@ -62,6 +62,7 @@ export function sanitizeSequence(raw: unknown): Sequence {
     version: 1,
     pixelCount: Number.isFinite(pixelCount) && pixelCount > 0 ? Math.floor(pixelCount) : PIXEL_COUNT,
     cues,
+    loop: typeof s.loop === 'boolean' ? s.loop : true, // default ON (matches device default)
   };
 }
 
@@ -70,6 +71,7 @@ export function defaultSequence(): Sequence {
   return {
     version: 1,
     pixelCount: PIXEL_COUNT,
+    loop: true,
     cues: [
       makeCue({ effect: Effect.Solid, durationMs: 3000, colorA: [255, 0, 0], colorB: [0, 0, 0], param1: 0, param2: 0 }),
       makeCue({ effect: Effect.Fade, durationMs: 4000, colorA: [255, 0, 0], colorB: [0, 0, 255], param1: 0, param2: 0 }),

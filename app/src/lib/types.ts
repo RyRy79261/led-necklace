@@ -13,6 +13,7 @@ export interface Sequence {
   version: number;    // = 1
   pixelCount: number; // = 30
   cues: Cue[];
+  loop?: boolean;     // when true, playback wraps at end instead of stopping (v2 loop flag)
 }
 export const PIXEL_COUNT = 30;
 export const CUE_BYTES = 16;

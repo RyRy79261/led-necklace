@@ -64,6 +64,28 @@ describe('Player transport state machine', () => {
     expect(isBlack(frame)).toBe(true);
   });
 
+  it('loop wraps to cue 0 at end instead of stopping', () => {
+    const p = new Player(seqOf(solidCue(1000), solidCue(1000)));
+    p.setLoop(true);
+    p.tick(0);
+    p.play('auto');
+    p.tick(1000); // -> cue 1
+    expect(p.state.currentCue).toBe(1);
+    p.tick(2000); // past last cue -> wraps to cue 0, still playing
+    expect(p.state.playing).toBe(true);
+    expect(p.state.currentCue).toBe(0);
+  });
+
+  it('loop does not restart after an explicit stop()', () => {
+    const p = new Player(seqOf(solidCue(1000)));
+    p.setLoop(true);
+    p.tick(0);
+    p.play('auto');
+    p.stop();
+    expect(p.state.playing).toBe(false);
+    expect(isBlack(p.tick(3000))).toBe(true);
+  });
+
   it('manual mode never auto-advances; NEXT is the only way forward', () => {
     const p = new Player(seqOf(solidCue(1000), solidCue(1000)));
     p.tick(0);

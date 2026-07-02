@@ -105,6 +105,11 @@ static Player gPlayer;
 // adopts a mode on play(); this remembers the choice for the next start.
 static PlayMode gMode = MODE_AUTO;
 
+// Whether the playing SHOW loops at end-of-sequence (vs. stopping). Persisted to /loop.bin,
+// toggled over BLE (SET_LOOP 0x08), default ON so an unattended show never goes dark. The idle
+// attract patterns always loop regardless of this.
+static bool gWantLoop = true;
+
 // ── Built-in idle / attract patterns ──────────────────────────────────────────
 // Shown so the prop is NEVER dark when it isn't playing an uploaded show (power-up with no
 // stored sequence, waiting for a link). These are ordinary Cue tables fed through the SAME
@@ -149,6 +154,7 @@ static void enterIdle(IdlePattern p, uint32_t now) {
   gIdlePattern = p;
   gIdleMode    = true;
   gIdleSinceMs = now;
+  gPlayer.setLoop(true);   // attract patterns always loop
   gPlayer.play(MODE_AUTO, now);
 }
 
@@ -156,6 +162,7 @@ static void enterIdle(IdlePattern p, uint32_t now) {
 static void enterShow(uint32_t now) {
   gIdleMode = false;
   gPlayer.setSequence(gCues, gCueCount);
+  gPlayer.setLoop(gWantLoop);   // show loops per the persisted/BLE loop setting
   gPlayer.play(gMode, now);
 }
 
@@ -268,6 +275,24 @@ static bool persistSeq(const uint8_t* data, uint32_t len) {
   return w == len;
 }
 
+// Persist / restore the show loop flag (1 byte at /loop.bin), so the SET_LOOP choice survives a
+// power-cycle. Missing file keeps the default (gWantLoop).
+static void saveLoopFlag(bool loop) {
+  File f = LittleFS.open("/loop.bin", "w");
+  if (!f) return;
+  uint8_t b = loop ? 1 : 0;
+  f.write(&b, 1);
+  f.close();
+}
+static void loadLoopFlag() {
+  if (!LittleFS.exists("/loop.bin")) return;
+  File f = LittleFS.open("/loop.bin", "r");
+  if (!f) return;
+  uint8_t b = 1;
+  if (f.read(&b, 1) == 1) gWantLoop = (b != 0);
+  f.close();
+}
+
 // Decode a wire blob into gCues via the staging buffer, swap in on success.
 static bool loadBlobIntoPlayer(const uint8_t* data, uint32_t len) {
   uint16_t count = 0;
@@ -343,6 +368,11 @@ static void applyBleCommand(const BleEvent& ev, uint32_t now) {
     case 0x04: gPlayer.prev(now); break;              // PREV
     case 0x05: gPlayer.goto_(ev.index, now); break;   // GOTO
     case 0x06: gPlayer.setMasterBrightness(ev.value); break; // SET_BRIGHT
+    case 0x08: // SET_LOOP — remember + persist; apply to a running show (idle always loops).
+      gWantLoop = (ev.value != 0);
+      if (!gIdleMode) gPlayer.setLoop(gWantLoop);
+      saveLoopFlag(gWantLoop);
+      break;
     case 0x07: gIdleMode = false; gPlayer.stop(); blackoutNow(); break;  // BLACKOUT (panic; exits idle)
     default: break;
   }
@@ -374,6 +404,7 @@ class CmdCallbacks : public NimBLECharacteristicCallbacks {
       case 0x02: case 0x03: case 0x04: case 0x07: break;              // STOP/NEXT/PREV/BLACKOUT
       case 0x05: if (n < 3) return; ev.index = rdU16(d + 1); break;   // GOTO [u16]
       case 0x06: if (n < 2) return; ev.value = d[1]; break;           // SET_BRIGHT [u8]
+      case 0x08: if (n < 2) return; ev.value = d[1]; break;           // SET_LOOP [u8]
       default: return; // unknown opcode
     }
     // Non-blocking: commands are idempotent-safe to resend, so a full queue can drop.
@@ -476,6 +507,7 @@ void setup() {
   // LittleFS — mount (format on first boot) and load any saved sequence.
   if (LittleFS.begin(true)) {
     loadSeqFromFlash();
+    loadLoopFlag();
   } else {
     Serial.println("[boot] LittleFS mount failed");
   }
@@ -559,13 +591,7 @@ void loop() {
   static uint32_t lastFrameMs = 0;
   if ((now - lastFrameMs) >= FRAME_INTERVAL_MS) {
     lastFrameMs = now;
-    gPlayer.tick(now, gFrame);
-    // Idle patterns loop forever: the engine stops at end-of-sequence (next()->stop()). If an
-    // idle table just ended, restart it and re-render THIS frame so the wrap shows no black blip.
-    if (gIdleMode && !gPlayer.isPlaying()) {
-      gPlayer.play(MODE_AUTO, now);
-      gPlayer.tick(now, gFrame);
-    }
+    gPlayer.tick(now, gFrame);   // idle + looping shows wrap inside tick() (Player loop flag)
     applyDisplay(gFrame);
   }
 

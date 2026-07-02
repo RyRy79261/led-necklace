@@ -40,6 +40,11 @@ public:
   void    setMasterBrightness(uint8_t value);
   uint8_t masterBrightness() const;
 
+  // Loop flag (DATA-MODEL section 4 "v2 loop flag"): when set, reaching the end of the sequence
+  // in AUTO wraps to cue 0 instead of stopping. Off by default; an explicit stop() still stops.
+  void setLoop(bool enabled);
+  bool loop() const;
+
   // ── State getters ──────────────────────────────────────────────────────────
   bool     isPlaying() const;
   PlayMode mode() const;
@@ -52,5 +57,6 @@ private:
   uint16_t   currentCue_;
   uint32_t   cueStartMs_;
   bool       playing_;
+  bool       loop_;              // v2 loop flag: wrap at end instead of stopping (default false)
   uint8_t    masterBrightness_;  // default 255
 };

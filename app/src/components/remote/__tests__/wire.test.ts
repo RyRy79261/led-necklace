@@ -34,6 +34,11 @@ describe('encodeCommand — CMD characteristic byte layout', () => {
     expect(Array.from(encodeCommand({ op: 'setBrightness', value: 999 }))).toEqual([0x06, 0xff]);
     expect(Array.from(encodeCommand({ op: 'setBrightness', value: -5 }))).toEqual([0x06, 0x00]);
   });
+
+  it('setLoop encodes 0x08 + a bool byte', () => {
+    expect(Array.from(encodeCommand({ op: 'setLoop', value: true }))).toEqual([0x08, 0x01]);
+    expect(Array.from(encodeCommand({ op: 'setLoop', value: false }))).toEqual([0x08, 0x00]);
+  });
 });
 
 describe('decodeCommand round-trips', () => {
@@ -46,6 +51,8 @@ describe('decodeCommand round-trips', () => {
     { op: 'goto', cueIndex: 513 },
     { op: 'setBrightness', value: 200 },
     { op: 'blackout' },
+    { op: 'setLoop', value: true },
+    { op: 'setLoop', value: false },
   ];
   it.each(cases)('%o survives encode -> decode', (cmd) => {
     expect(decodeCommand(encodeCommand(cmd))).toEqual(cmd);

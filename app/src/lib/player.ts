@@ -24,6 +24,9 @@ export class Player {
   private currentCue = 0;
   private cueStartMs = 0;
   private playing = false;
+  // Loop flag (DATA-MODEL §4 "v2 loop flag"): when set, next() past the last cue wraps to 0
+  // instead of stopping. Off by default; an explicit stop() still stops.
+  private looping = false;
   // masterBrightness is a runtime global (BLE SET_BRIGHTNESS), default 255.
   private masterBrightness = 255;
   // Internal clock: the most recent time seen by tick(). Transitions anchor
@@ -55,6 +58,14 @@ export class Player {
     this.masterBrightness = value < 0 ? 0 : value > 255 ? 255 : value;
   }
 
+  /** Loop flag: when set, the sequence wraps to cue 0 at the end instead of stopping. */
+  setLoop(enabled: boolean): void {
+    this.looping = enabled;
+  }
+  get loop(): boolean {
+    return this.looping;
+  }
+
   /** Set mode, reset to first cue, mark playing. */
   play(mode: PlayMode): void {
     this.mode = mode;
@@ -68,12 +79,16 @@ export class Player {
     this.playing = false;
   }
 
-  /** Advance one cue; stops at end of sequence (v1: no loop). */
+  /** Advance one cue; at the end wrap to 0 if looping, else stop. */
   next(): void {
     this.currentCue += 1;
     this.cueStartMs = this.lastNow;
     if (this.currentCue >= this.sequence.cues.length) {
-      this.stop();
+      if (this.looping && this.sequence.cues.length > 0) {
+        this.currentCue = 0; // loop flag: wrap instead of stopping
+      } else {
+        this.stop();
+      }
     }
   }
 
@@ -110,12 +125,17 @@ export class Player {
     if (this.mode === 'auto') {
       // Walk durations. next() re-anchors cueStartMs to nowMs, so elapsed resets
       // to 0 after each advance; the loop only continues through zero-duration
-      // cues and terminates at end-of-sequence (which stops playback).
+      // cues and terminates at end-of-sequence (which stops playback, unless looping).
+      let advanced = 0;
       while (this.playing) {
         const cue = cues[this.currentCue];
         const elapsed = nowMs - this.cueStartMs;
         if (elapsed >= cue.durationMs) {
           this.next();
+          // Guard: an all-zero-duration sequence under loop would spin forever. Cap advances at
+          // cueCount per tick, then render whatever cue we landed on. (Never triggers for a
+          // sequence with any positive-duration cue, so real content stays bit-identical.)
+          if (++advanced > cues.length) break;
         } else {
           break;
         }

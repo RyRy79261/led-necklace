@@ -30,6 +30,7 @@ Player::Player()
       currentCue_(0),
       cueStartMs_(0),
       playing_(false),
+      loop_(false),
       masterBrightness_(255) {}
 
 void Player::setSequence(const Cue* cues, uint16_t count) {
@@ -53,12 +54,16 @@ void Player::stop() {
   playing_ = false;
 }
 
-// next → currentCue+1, cueStartMs=now. If past last cue → stop() (v1: no loop).
+// next → currentCue+1, cueStartMs=now. Past last cue: wrap to 0 if loop_, else stop().
 void Player::next(uint32_t nowMs) {
   currentCue_ = (uint16_t)(currentCue_ + 1);
   cueStartMs_ = nowMs;
   if (currentCue_ >= cueCount_) {
-    stop();
+    if (loop_ && cueCount_ > 0) {
+      currentCue_ = 0;   // loop flag: wrap instead of stopping
+    } else {
+      stop();
+    }
   }
 }
 
@@ -96,12 +101,17 @@ void Player::tick(uint32_t nowMs, RGB* frame) {
   // cues (skipped, never shown) and stops at end-of-sequence. Loop form (not a single
   // `if`) to stay bit-identical with app/src/lib/player.ts — see DATA-MODEL.md §4.
   if (mode_ == MODE_AUTO) {
+    uint16_t advanced = 0;
     while (playing_ && (nowMs - cueStartMs_) >= cues_[currentCue_].durationMs) {
-      next(nowMs);  // may stop() at end of sequence
+      next(nowMs);  // may stop() at end of sequence, or wrap to 0 when looping
       if (!playing_ || currentCue_ >= cueCount_) {
         fillBlackout(frame);
         return;
       }
+      // Guard: an all-zero-duration sequence under loop_ would spin forever. Cap advances at
+      // cueCount per tick, then render whatever cue we landed on. (Never triggers for a
+      // sequence with any positive-duration cue, so real content stays bit-identical.)
+      if (++advanced > cueCount_) break;
     }
   }
 
@@ -122,6 +132,9 @@ void Player::tick(uint32_t nowMs, RGB* frame) {
 
 void Player::setMasterBrightness(uint8_t value) { masterBrightness_ = value; }
 uint8_t Player::masterBrightness() const        { return masterBrightness_; }
+
+void Player::setLoop(bool enabled) { loop_ = enabled; }
+bool    Player::loop() const       { return loop_; }
 
 bool     Player::isPlaying()  const { return playing_; }
 PlayMode Player::mode()       const { return mode_; }

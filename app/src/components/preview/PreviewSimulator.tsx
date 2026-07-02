@@ -58,6 +58,7 @@ export function PreviewSimulator() {
   useEffect(() => {
     const loaded = loadSequence();
     playerRef.current = new Player(loaded.sequence);
+    playerRef.current.setLoop(loaded.sequence.loop ?? true);
     setSequence(loaded.sequence);
     setSource(loaded.source);
 
@@ -124,6 +125,7 @@ export function PreviewSimulator() {
   const handleReload = useCallback(() => {
     const loaded = loadSequence();
     playerRef.current = new Player(loaded.sequence);
+    playerRef.current.setLoop(loaded.sequence.loop ?? true);
     setSequence(loaded.sequence);
     setSource(loaded.source);
     resetReadouts();

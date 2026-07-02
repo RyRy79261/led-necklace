@@ -14,6 +14,8 @@ import { loadSequence, makeCue, sanitizeSequence, saveSequence } from './sequenc
 export interface EditorUploader {
   isConnected?(): boolean;
   uploadSequence(bytes: Uint8Array, onProgress?: (frac: number) => void): Promise<void>;
+  /** Optional: push the loop on/off setting (BLE SET_LOOP). Called after an upload. */
+  setLoop?(loop: boolean): Promise<void>;
 }
 
 export interface CueListEditorProps {
@@ -76,6 +78,7 @@ CURRENT SEQUENCE:
 export function CueListEditor({ uploader = null }: CueListEditorProps) {
   const [items, setItems] = useState<CueItem[]>([]);
   const [pixelCount, setPixelCount] = useState<number>(PIXEL_COUNT);
+  const [loopEnabled, setLoopEnabled] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
@@ -87,13 +90,14 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
     const seq = loadSequence();
     setItems(toItems(seq.cues));
     setPixelCount(seq.pixelCount);
+    setLoopEnabled(seq.loop ?? true);
     setExpandedId(null);
     setHydrated(true);
   }, []);
 
   const sequence: Sequence = useMemo(
-    () => ({ version: 1, pixelCount, cues: items.map((i) => i.cue) }),
-    [pixelCount, items],
+    () => ({ version: 1, pixelCount, cues: items.map((i) => i.cue), loop: loopEnabled }),
+    [pixelCount, items, loopEnabled],
   );
 
   // Persist whenever the working sequence changes (after initial hydration).
@@ -185,6 +189,7 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
         const seq = sanitizeSequence(parsed);
         setItems(toItems(seq.cues));
         setPixelCount(seq.pixelCount);
+        setLoopEnabled(seq.loop ?? true);
         setExpandedId(null);
         setNotice({ kind: 'success', text: `Imported ${seq.cues.length} cue${seq.cues.length === 1 ? '' : 's'}.` });
       } catch {
@@ -244,13 +249,14 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
     setNotice({ kind: 'info', text: 'Uploading to device…' });
     try {
       await uploader.uploadSequence(bytes);
+      await uploader.setLoop?.(loopEnabled);
       setNotice({ kind: 'success', text: `Uploaded ${bytes.length} bytes to the necklace.` });
     } catch {
       setNotice({ kind: 'error', text: 'Upload failed.' });
     } finally {
       setUploadState('idle');
     }
-  }, [uploader, sequence]);
+  }, [uploader, sequence, loopEnabled]);
 
   const uploadReady = Boolean(uploader && (uploader.isConnected?.() ?? true));
   const uploadDisabled = !uploadReady || items.length === 0 || uploadState === 'busy';
@@ -281,6 +287,18 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
         >
           Copy AI prompt
         </button>
+        <label
+          className="flex items-center gap-2 rounded-md border border-stage-border bg-stage-bg px-3 py-2 text-sm text-neutral-200"
+          title="When on, the necklace repeats the sequence forever instead of stopping at the end"
+        >
+          <input
+            type="checkbox"
+            checked={loopEnabled}
+            onChange={(e) => setLoopEnabled(e.target.checked)}
+            className="accent-stage-accent"
+          />
+          Loop
+        </label>
         <input
           ref={fileInputRef}
           type="file"

@@ -17,7 +17,8 @@ export type Command =
   | { op: 'prev' }
   | { op: 'goto'; cueIndex: number }
   | { op: 'setBrightness'; value: number }
-  | { op: 'blackout' };
+  | { op: 'blackout' }
+  | { op: 'setLoop'; value: boolean };
 
 export interface DeviceStatus {
   playing: boolean; mode: 'auto' | 'manual';
@@ -49,6 +50,7 @@ const OP_PREV = 0x04;
 const OP_GOTO = 0x05;
 const OP_SET_BRIGHT = 0x06;
 const OP_BLACKOUT = 0x07;
+const OP_SET_LOOP = 0x08;
 
 // UPLOAD opcodes (app -> device)
 const UP_BEGIN = 0x10;
@@ -107,6 +109,8 @@ export function encodeCommand(cmd: Command): Uint8Array {
       return Uint8Array.of(OP_SET_BRIGHT, clampByte(cmd.value));
     case 'blackout':
       return Uint8Array.of(OP_BLACKOUT);
+    case 'setLoop':
+      return Uint8Array.of(OP_SET_LOOP, cmd.value ? 1 : 0);
   }
 }
 
@@ -129,6 +133,8 @@ export function decodeCommand(bytes: Uint8Array): Command {
       return { op: 'setBrightness', value: dv.getUint8(1) };
     case OP_BLACKOUT:
       return { op: 'blackout' };
+    case OP_SET_LOOP:
+      return { op: 'setLoop', value: dv.getUint8(1) !== 0 };
     default:
       throw new Error(`Unknown CMD opcode 0x${op.toString(16)}`);
   }
@@ -294,6 +300,7 @@ export class MockTransport implements NecklaceTransport {
     crc32(bytes);
     const seq = decodeSequence(bytes);
     this.player = new Player(seq);
+    this.player.setLoop(seq.loop ?? false);
     this.emitStatus(true);
   }
 
@@ -330,6 +337,9 @@ export class MockTransport implements NecklaceTransport {
         break;
       case 'blackout':
         this.player.stop();
+        break;
+      case 'setLoop':
+        this.player.setLoop(cmd.value);
         break;
     }
   }

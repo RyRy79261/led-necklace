@@ -148,7 +148,17 @@ state = { sequence, mode: 'auto'|'manual', currentCue: int, cueStartMs: int, pla
   tick, so a command issued before the clock has started cannot skip cue 0.
 - Manual mode: `tick` NEVER auto-advances; the held cue keeps animating (breathe/strobe
   still move because they use `elapsed`). NEXT is the only way forward.
-- End-of-sequence in auto ⇒ stop + blackout. (Looping is a v2 flag.)
+- End-of-sequence in auto ⇒ stop + blackout, **unless the loop flag is set** (below).
+
+### Loop flag
+Optional, **off by default**; set via BLE `SET_LOOP` (0x08) and mirrored by the app's
+`Sequence.loop`. When set, `next()` past the last cue **wraps to cue 0** instead of `stop()`, so
+the show runs continuously. An explicit `stop()`/BLACKOUT still stops (loop only affects the
+end-of-sequence edge, never restarts a stopped player). To keep the auto-walk from spinning on an
+all-zero-duration sequence, the tick loop caps advances at `cueCount` per tick then renders the
+cue it landed on — this never triggers when any cue has positive duration, so real content stays
+bit-identical between app and firmware. The flag is **not** part of the sequence wire blob; it's a
+separate persisted device setting (`/loop.bin` on the firmware), synced from the app via `SET_LOOP`.
 
 This exact state machine is shared: firmware runs it at 30–60 FPS; the app runs it to
 drive the canvas preview and (via MockTransport) the simulated device.

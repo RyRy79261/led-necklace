@@ -24,6 +24,7 @@ STATUS  : 5d3a1000-1f2b-4c6a-9e10-000000000004   (Notify)
 0x05 GOTO      [cueIndex u16 LE]
 0x06 SET_BRIGHT[u8]             masterBrightness 0..255
 0x07 BLACKOUT                   stop + all pixels off immediately (panic)
+0x08 SET_LOOP  [u8]            0=off, 1=on. Loop the show at end-of-sequence. Persisted; default on.
 ```
 All commands are idempotent-safe to resend. Device applies immediately and emits STATUS.
 
@@ -60,7 +61,8 @@ export type Command =
   | { op: 'prev' }
   | { op: 'goto'; cueIndex: number }
   | { op: 'setBrightness'; value: number }
-  | { op: 'blackout' };
+  | { op: 'blackout' }
+  | { op: 'setLoop'; value: boolean };
 
 export interface DeviceStatus {
   playing: boolean; mode: 'auto' | 'manual';
