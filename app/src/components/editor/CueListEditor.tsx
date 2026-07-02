@@ -37,6 +37,42 @@ function toItems(cues: Cue[]): CueItem[] {
 
 type Notice = { kind: 'info' | 'error' | 'success'; text: string } | null;
 
+/**
+ * Prompt handed to an AI assistant so a non-technical user can just describe a change in
+ * words, paste this + the current sequence, and get back a JSON file to Import. Teaches the
+ * assistant the exact schema — including the 16-bit breathe period formula — so its output
+ * decodes cleanly. The current sequence JSON is appended after this intro.
+ */
+const AGENT_PROMPT_INTRO = `You are editing a lighting sequence for a 30-LED necklace. Below is the current sequence as JSON, then what I want changed. Return ONLY the complete modified JSON (no explanation, no code fences) so it can be imported directly.
+
+FORMAT
+{ "version": 1, "pixelCount": 30, "cues": [ ...ordered steps... ] }
+Cues play top to bottom; in auto mode each shows for its "durationMs", then the next begins.
+
+Each cue:
+- "effect": 0 = Solid (hold colorA), 1 = Fade (blend colorA -> colorB over the duration),
+            2 = Breathe (colorA pulsing smoothly up and down), 3 = Strobe (colorA flashing on/off).
+- "durationMs": how long this step lasts, in milliseconds.
+- "colorA", "colorB": [R, G, B], each 0-255. colorB is only used by Fade.
+- "brightness": 0-255, this step's maximum.
+- "param1", "param2": effect options — set BOTH to 0 unless the effect below uses them.
+
+EFFECT OPTIONS
+- Solid / Fade: param1 = 0, param2 = 0.
+- Breathe: the breath period is a 16-bit value split across the two bytes:
+    period_ms = (param1 + param2 * 256) * 10.
+    For a period of S seconds: units = round(S * 100); param1 = units % 256; param2 = floor(units / 256).
+    Example: 6 s -> units 600 -> param1 88, param2 2. Keep between ~0.2 s and 60 s.
+- Strobe: param1 = flash period in 10 ms units (50 = 500 ms); param2 = duty 0-255 (128 is about 50% on).
+
+RULES: keep "version" = 1 and "pixelCount" = 30. Stay within the ranges above. Return the whole JSON, not a fragment.
+
+WHAT I WANT:
+<< describe the change in plain words, e.g. "a slow calming blue breathe, about 8 seconds per breath, for 2 minutes" >>
+
+CURRENT SEQUENCE:
+`;
+
 export function CueListEditor({ uploader = null }: CueListEditorProps) {
   const [items, setItems] = useState<CueItem[]>([]);
   const [pixelCount, setPixelCount] = useState<number>(PIXEL_COUNT);
@@ -158,6 +194,43 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
     reader.readAsText(file);
   }, []);
 
+  const handleCopyPrompt = useCallback(async () => {
+    const text = AGENT_PROMPT_INTRO + JSON.stringify(sequence, null, 2);
+    const done = () =>
+      setNotice({
+        kind: 'success',
+        text: 'AI prompt copied — paste it into an AI assistant, then Import the JSON it returns.',
+      });
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        done();
+        return;
+      }
+      throw new Error('no async clipboard');
+    } catch {
+      // Fallback for webviews without the async clipboard API (e.g. some Capacitor shells).
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        if (!ok) throw new Error('execCommand copy failed');
+        done();
+      } catch {
+        setNotice({
+          kind: 'error',
+          text: 'Could not copy automatically — use Export JSON and paste the file to your assistant instead.',
+        });
+      }
+    }
+  }, [sequence]);
+
   const handleUpload = useCallback(async () => {
     if (!uploader) return;
     let bytes: Uint8Array;
@@ -199,6 +272,14 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
         </button>
         <button type="button" className={btnDefault} onClick={handleExport} disabled={items.length === 0}>
           Export JSON
+        </button>
+        <button
+          type="button"
+          className={btnDefault}
+          onClick={handleCopyPrompt}
+          title="Copy a ready-made prompt (schema + your sequence) to hand to an AI assistant"
+        >
+          Copy AI prompt
         </button>
         <input
           ref={fileInputRef}
