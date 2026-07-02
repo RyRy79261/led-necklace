@@ -11,7 +11,8 @@ Framework: Arduino (ESP32). BLE: NimBLE-Arduino. LEDs: FastLED (RMT driver).
 ```
 firmware/
   platformio.ini        two envs: seeed_xiao_esp32c3 (target) + native (host tests)
-  src/main.cpp          hardware wiring: FastLED, button, LittleFS, NimBLE (STUB)
+  src/main.cpp          device glue: FastLED + power cap, button, LittleFS, NimBLE,
+                        boot autostart + idle/attract patterns
   lib/seq/              sequence types + binary codec + crc32   (portable C++)
   lib/effects/          reference effect engine + gamma          (portable C++)
   lib/player/           transport state machine                  (portable C++)
@@ -52,7 +53,8 @@ silkscreen when the board is in hand.
 
 ## Power
 
-**LiPo-direct** (cell → BAT, no boost). WS2812B VDD spec is ~3.5–5.3V, so **cut off at
-~3.5V**: below that the LEDs get flaky data/dropout (not just warmer whites), and the
-cutoff also protects the cell from deep-discharge. Use a **protected cell + inline
-fuse/PTC** — it's worn against skin. Full rationale in `../docs/PLAN.md`.
+**LiPo-direct** (cell → BAT, no boost). WS2812B VDD spec is ~3.5–5.3V. A ~3.5V firmware
+low-voltage cutoff (flaky LED data below that, plus deep-discharge protection) is **deferred
+post-show** — it needs a battery-sense ADC divider; until then the **protected cell's own PCB**
+(~2.5–3.0V) is the safety net. Use a **protected cell + inline fuse/PTC** — it's worn against
+skin. Firmware also caps LED current at ~1.0A via FastLED. Full rationale in `../docs/PLAN.md`.
