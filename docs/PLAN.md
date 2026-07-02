@@ -136,7 +136,7 @@ VERIFIED with no hardware:
   the SAME golden vectors (codec, effects, player). Portable C++, compiles clean.
 - **Firmware device** (`firmware/src/main.cpp`): FastLED RMT on GPIO21, debounced button
   GPIO4, NimBLE service (CMD/UPLOAD/STATUS), chunked upload → LittleFS + CRC, boot-load,
-  FastLED current cap (setMaxPowerInVoltsAndMilliamps 5V/1500mA, default brightness 160).
+  FastLED current cap (setMaxPowerInVoltsAndMilliamps 5V/1000mA = ~1.0A/1C, default brightness 160).
   **Device compile passes** (`pio run -e seeed_xiao_esp32c3`): RAM 11.9%, Flash 42.2% on the C3.
 
 Adversarial-review fixes applied (4/4, 0 high):

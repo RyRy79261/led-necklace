@@ -14,7 +14,7 @@ row = `i % 10`, top → bottom.
 |---|---|
 | Seeed **XIAO ESP32-C3** | Wi-Fi + BLE 5, RISC-V, onboard USB-C LiPo charging. |
 | **WS2812B** LEDs ×30 | 3 strips × 10, daisy-chained on one data line. GRB order. |
-| **LiPo cell (protected)** | Single cell, 3.7 V nominal. Use a cell with a built-in protection PCM. |
+| **LiPo cell (protected)** | Single cell, **~1000 mAh**, 3.7 V nominal. Built-in protection PCB (cuts ~2.5–3.0 V) is the deep-discharge safety net. A ~10-min show draws ~230 mAh, so 1.0 A ≈ 1C. |
 | Momentary button | Start/stop + mode. |
 | **Inline fuse / PTC** | On the battery +. Resettable PTC (~2 A hold) is fine. |
 | Hard power switch | On the battery line. |
@@ -54,13 +54,18 @@ works on your desk over USB and dies the instant you unplug. LiPo-direct also me
 data line is comfortably above the WS2812B logic threshold (0.7 × VDD), so **no level shifter
 is needed**.
 
-- **Low-voltage cutoff at ~3.5 V.** WS2812B are only in-spec down to ~3.5 V (below that:
-  flaky data, wrong colours) — and 3.5 V also protects the LiPo from damaging deep discharge.
-  One threshold, two wins. (No cutoff is implemented in firmware yet — it needs a battery-sense
-  ADC divider; see remaining tasks.)
+- **Low-voltage cutoff at ~3.5 V — firmware, deferred to post-show.** WS2812B are only in-spec
+  down to ~3.5 V (below that: flaky data, wrong colours), and 3.5 V also spares the LiPo a deep
+  discharge. But this is a **cell-longevity** improvement, not a reliability factor for one 10-min
+  show: a full ~1000 mAh cell drains only ~230 mAh and never approaches the flaky region, and the
+  cell's protection PCB already covers the dangerous floor. It needs a battery-sense ADC divider (a
+  hardware mod) plus a new, untested firmware path, so it is intentionally **not added before an
+  unattended show** — deferred to a post-show revision (along with the BLE battery-% readout).
 - **Current cap.** All-white/full-bright 30 px ≈ 1.8 A — never used at prop brightness, but it
   sets wire gauge. Firmware caps it two ways: per-cue + master brightness (default 160/255) and
-  FastLED's `setMaxPowerInVoltsAndMilliamps(5, 1500)`.
+  FastLED's `setMaxPowerInVoltsAndMilliamps(5, 1000)` (~1.0 A / 1C hard ceiling). Note the `5`
+  is FastLED's model reference, not the rail voltage — the effective cap is `5·mA/5`, so pass
+  `(5, 1000)` for a true 1 A limit; `(4, 1000)` would give only 0.8 A.
 - **Runtime is not the constraint** (a 10-min show is short); size the cell for shows-between-
   charges and comfortable wear. Note the ESP32-C3 radio draws ~80–130 mA, which can rival the
   LEDs at low brightness — measure whole-system draw, not just the strip.

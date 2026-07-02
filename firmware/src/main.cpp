@@ -68,15 +68,26 @@ static const uint32_t DEBOUNCE_MS       = 25;    // button debounce window
 static const uint32_t LONG_PRESS_MS     = 600;   // >= this held = long press (toggle mode)
 static const uint16_t REQ_MTU           = 247;   // request larger MTU on connect
 
+// Unattended-show behavior: start the stored sequence on power-up with no phone/BLE/button
+// needed. Full rationale at the autostart block in setup(). Set false to boot dark instead.
+static const bool     BOOT_AUTOPLAY     = true;
+
 // ── Global current / brightness cap ──────────────────────────────────────────
 // The Player already bakes in per-cue brightness, the runtime masterBrightness and gamma
 // (tick() returns display-ready bytes). These two hardware caps sit on TOP as a safety net
 // so the summed draw of all 30 WS2812B can never imply an unsafe current at prop brightness:
 //   MASTER_BRIGHTNESS_CAP — a flat scale applied to every frame (conservative default).
 //   MAX_MILLIAMPS         — FastLED auto-dims a frame further if it would exceed this budget.
+//
+// IMPORTANT — SUPPLY_VOLTS is the model reference, NOT the rail voltage. FastLED's power model
+// is calibrated at 5V (see power_mgt.cpp: the per-channel constants are `mA * 5`), so the
+// effective ceiling is (SUPPLY_VOLTS * MAX_MILLIAMPS) / 5 milliamps of *actual* LED current.
+// Keep SUPPLY_VOLTS = 5 even though the strip runs LiPo-direct at ~3.7-4.2V. To cap to N mA,
+// pass (5, N) — passing (4, N) would silently tighten the cap to 4/5·N (e.g. (4,1000) = 0.8A).
 static const uint8_t  MASTER_BRIGHTNESS_CAP = 160;   // ~63% flat cap
-static const uint32_t SUPPLY_VOLTS          = 5;
-static const uint32_t MAX_MILLIAMPS         = 1500;  // 30x WS2812B full-white ~1800mA -> capped
+static const uint32_t SUPPLY_VOLTS          = 5;     // FastLED model reference — keep at 5
+static const uint32_t MAX_MILLIAMPS         = 1000;  // -> 1.0A (1C) hard ceiling. Full-white 30px
+                                                     // is ~1.3-1.8A at full brightness -> clamped.
 
 // ── FastLED / engine buffers ──────────────────────────────────────────────────
 // NOTE: FastLED's EOrder enum injects unscoped enumerators named RGB, GRB, BGR, ... into
@@ -93,6 +104,60 @@ static Player gPlayer;
 // Desired play mode toggled by the button long-press / set by PLAY commands. The Player only
 // adopts a mode on play(); this remembers the choice for the next start.
 static PlayMode gMode = MODE_AUTO;
+
+// ── Built-in idle / attract patterns ──────────────────────────────────────────
+// Shown so the prop is NEVER dark when it isn't playing an uploaded show (power-up with no
+// stored sequence, waiting for a link). These are ordinary Cue tables fed through the SAME
+// tested effect engine (renderCue) — no new pixel math. Colours/timings are easy to tweak.
+// The engine has no loop mode (next() stops at end-of-sequence), so loop() re-plays the active
+// idle table when it ends (see the idle block in loop()). Per-cue brightness is 255; the global
+// setBrightness(160) + the 1.0A power cap still bound the actual current (even the white breathe).
+static const Cue kIdleFade[] = {          // smooth trip around the hue wheel — 6 x 2s = 12s loop
+  {EFFECT_FADE, 2000, {255,0,0},   {255,255,0}, 0, 0, 255}, // red     -> yellow
+  {EFFECT_FADE, 2000, {255,255,0}, {0,255,0},   0, 0, 255}, // yellow  -> green
+  {EFFECT_FADE, 2000, {0,255,0},   {0,255,255}, 0, 0, 255}, // green   -> cyan
+  {EFFECT_FADE, 2000, {0,255,255}, {0,0,255},   0, 0, 255}, // cyan    -> blue
+  {EFFECT_FADE, 2000, {0,0,255},   {255,0,255}, 0, 0, 255}, // blue    -> magenta
+  {EFFECT_FADE, 2000, {255,0,255}, {255,0,0},   0, 0, 255}, // magenta -> red
+};
+static const Cue kIdleBlueRed[] = {       // "no link" indicator — slow blue/red, 1s each (2s loop)
+  {EFFECT_SOLID, 1000, {0,0,255}, {0,0,0}, 0, 0, 255},      // blue
+  {EFFECT_SOLID, 1000, {255,0,0}, {0,0,0}, 0, 0, 255},      // red
+};
+static const Cue kIdleBreathe[] = {       // very slow breathe (~6s) via two long FADEs — beats the
+  {EFFECT_FADE, 3000, {0,0,0},       {255,255,255}, 0, 0, 255}, // ramp up   2.55s ceiling of a
+  {EFFECT_FADE, 3000, {255,255,255}, {0,0,0},       0, 0, 255}, // ramp down native BREATHE cue
+};
+
+enum IdlePattern : uint8_t { IDLE_FADE = 0, IDLE_BLUERED = 1, IDLE_BREATHE = 2 };
+static bool        gIdleMode    = false;  // true = looping a built-in idle table (not a real show)
+static IdlePattern gIdlePattern = IDLE_FADE;
+static uint32_t    gIdleSinceMs = 0;      // millis() when the current idle pattern started
+
+// After this long idling with NO BLE link, the calm color-fade escalates to the blue/red "no
+// link" flash; a link returns it to the color-fade. Set 0 to disable the escalation.
+static const uint32_t IDLE_NOLINK_MS = 45000;  // 45 s
+
+// Bind + loop one of the built-in idle tables (keeps the prop lit while it waits).
+static void enterIdle(IdlePattern p, uint32_t now) {
+  switch (p) {
+    case IDLE_BLUERED: gPlayer.setSequence(kIdleBlueRed, 2); break;
+    case IDLE_BREATHE: gPlayer.setSequence(kIdleBreathe, 2); break;
+    case IDLE_FADE:
+    default:           gPlayer.setSequence(kIdleFade, 6);    break;
+  }
+  gIdlePattern = p;
+  gIdleMode    = true;
+  gIdleSinceMs = now;
+  gPlayer.play(MODE_AUTO, now);
+}
+
+// Bind + start the uploaded show (gCues), leaving idle. Caller ensures gCueCount > 0.
+static void enterShow(uint32_t now) {
+  gIdleMode = false;
+  gPlayer.setSequence(gCues, gCueCount);
+  gPlayer.play(gMode, now);
+}
 
 // ── BLE command queue (BLE task -> loop) ──────────────────────────────────────
 struct BleEvent {
@@ -254,6 +319,8 @@ static void handleUploadCommit() {
     notifyUploadAck(ACK_LEN_FAIL);
     return;
   }
+  // New show is live in RAM -> leave the idle attract and start playing it immediately.
+  enterShow(millis());
   if (!persistSeq(gUploadBuf, total)) {
     // Sequence is live in RAM but not saved -> report storage failure; keep playing it.
     notifyUploadAck(ACK_STORE_FAIL);
@@ -276,7 +343,7 @@ static void applyBleCommand(const BleEvent& ev, uint32_t now) {
     case 0x04: gPlayer.prev(now); break;              // PREV
     case 0x05: gPlayer.goto_(ev.index, now); break;   // GOTO
     case 0x06: gPlayer.setMasterBrightness(ev.value); break; // SET_BRIGHT
-    case 0x07: gPlayer.stop(); blackoutNow(); break;  // BLACKOUT (panic)
+    case 0x07: gIdleMode = false; gPlayer.stop(); blackoutNow(); break;  // BLACKOUT (panic; exits idle)
     default: break;
   }
 }
@@ -361,12 +428,14 @@ static uint32_t gBtnChangedMs = 0;     // when the raw read last changed
 static uint32_t gBtnPressMs   = 0;     // when the current press started
 
 static void onShortPress(uint32_t now) {
+  if (gIdleMode) return;                       // idling (no show) -> nothing to start/stop
   if (gPlayer.isPlaying()) gPlayer.stop();
   else                     gPlayer.play(gMode, now);
 }
 static void onLongPress(uint32_t now) {
   gMode = (gMode == MODE_AUTO) ? MODE_MANUAL : MODE_AUTO;
-  if (gPlayer.isPlaying()) gPlayer.play(gMode, now); // apply immediately (restarts at cue 0)
+  // Don't disturb the idle attract (it loops in AUTO); only re-apply to a running show.
+  if (!gIdleMode && gPlayer.isPlaying()) gPlayer.play(gMode, now); // apply immediately (restarts at cue 0)
 }
 
 static void serviceButton(uint32_t now) {
@@ -409,6 +478,20 @@ void setup() {
     loadSeqFromFlash();
   } else {
     Serial.println("[boot] LittleFS mount failed");
+  }
+
+  // Boot behavior — NEVER sit dark:
+  //   • a show is stored  -> autostart it standalone (unattended safety; no phone needed).
+  //   • nothing stored    -> loop the color-fade attract, escalating to the blue/red "no link"
+  //                          flash after IDLE_NOLINK_MS with no BLE connection.
+  // Both drive the tested effect engine. MODEL SWITCH: to always show the attract first and
+  // require the app to start even a stored show, change `gCueCount > 0` below to `false`.
+  if (BOOT_AUTOPLAY && gCueCount > 0) {
+    enterShow(millis());
+    Serial.printf("[boot] autostart stored show: %u cues\n", gCueCount);
+  } else {
+    enterIdle(IDLE_FADE, millis());
+    Serial.println("[boot] no stored show -> idle attract (color fade)");
   }
 
   // NimBLE — server + service + CMD/UPLOAD/STATUS characteristics, then advertise.
@@ -459,12 +542,30 @@ void loop() {
   // 3) Commit a finished upload (validate len+crc, decode, persist, reload, ack).
   handleUploadCommit();
 
+  // 3.5) Idle/attract escalation: color-fade -> blue/red "no link" flash after IDLE_NOLINK_MS
+  //      with no BLE link, and back to the calm fade once a link appears. (The seamless LOOP of
+  //      the built-in happens in the render step below, so the wrap never shows a black frame.)
+  if (gIdleMode) {
+    if (gConnected) {
+      if (gIdlePattern != IDLE_FADE) enterIdle(IDLE_FADE, now);
+    } else if (IDLE_NOLINK_MS && gIdlePattern == IDLE_FADE &&
+               (now - gIdleSinceMs) >= IDLE_NOLINK_MS) {
+      enterIdle(IDLE_BLUERED, now);
+    }
+  }
+
   // 4) Render at ~60 FPS. tick() emits display-ready bytes (per-cue + master brightness +
   //    gamma already baked in); FastLED's caps then bound the actual current draw.
   static uint32_t lastFrameMs = 0;
   if ((now - lastFrameMs) >= FRAME_INTERVAL_MS) {
     lastFrameMs = now;
     gPlayer.tick(now, gFrame);
+    // Idle patterns loop forever: the engine stops at end-of-sequence (next()->stop()). If an
+    // idle table just ended, restart it and re-render THIS frame so the wrap shows no black blip.
+    if (gIdleMode && !gPlayer.isPlaying()) {
+      gPlayer.play(MODE_AUTO, now);
+      gPlayer.tick(now, gFrame);
+    }
     applyDisplay(gFrame);
   }
 
