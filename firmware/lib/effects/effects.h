@@ -11,7 +11,7 @@
 // Render a cue at `elapsedMs` into its linear (pre-gamma) colour.
 //   SOLID:   colorA * (brightness/255)
 //   FADE:    lerp(colorA, colorB, clamp(elapsedMs/durationMs,0,1)) * (brightness/255)
-//   BREATHE: colorA * (brightness/255) * (1 - cos(2*pi*phase))/2
+//   BREATHE: colorA * (brightness/255) * (1 - cos(2*pi*phase))/2  [period=(param1|param2<<8)*10ms]
 //   STROBE:  on ? colorA * (brightness/255) : (0,0,0)
 // masterBrightness and gamma are applied SEPARATELY, downstream (see Player / gamma8).
 RGB renderCue(const Cue& cue, uint32_t elapsedMs);

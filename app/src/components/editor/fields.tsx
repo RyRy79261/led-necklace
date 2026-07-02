@@ -73,6 +73,61 @@ export function ByteSlider({
   );
 }
 
+/**
+ * Slider for a millisecond period presented in SECONDS — used for the breathe period, which
+ * spans a much wider range than a byte (up to ~60 s). Reports back in milliseconds.
+ */
+export function PeriodSlider({
+  label,
+  hint,
+  valueMs,
+  minMs,
+  maxMs,
+  onChangeMs,
+  disabled,
+}: {
+  label: string;
+  hint?: ReactNode;
+  valueMs: number;
+  minMs: number;
+  maxMs: number;
+  onChangeMs: (ms: number) => void;
+  disabled?: boolean;
+}) {
+  const seconds = valueMs / 1000;
+  return (
+    <FieldShell label={label} hint={hint} disabled={disabled}>
+      <div className="flex items-center gap-3">
+        <input
+          type="range"
+          min={minMs}
+          max={maxMs}
+          step={100}
+          value={valueMs}
+          disabled={disabled}
+          onChange={(e) => onChangeMs(Number(e.target.value))}
+          aria-label={label}
+          className="h-2 flex-1 cursor-pointer accent-stage-accent disabled:cursor-not-allowed"
+        />
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min={minMs / 1000}
+            max={maxMs / 1000}
+            step={0.1}
+            value={Number(seconds.toFixed(1))}
+            disabled={disabled}
+            onChange={(e) => onChangeMs(Math.round(Number(e.target.value) * 1000))}
+            aria-label={`${label} in seconds`}
+            className="w-16 rounded-md border border-stage-border bg-stage-bg px-2 py-1.5 text-right text-sm text-neutral-100 focus:border-stage-accent focus:outline-none disabled:cursor-not-allowed"
+          />
+          <span className="text-xs text-neutral-500">s</span>
+        </div>
+      </div>
+    </FieldShell>
+  );
+}
+
 /** Plain non-negative integer input (used for durationMs). */
 export function DurationInput({
   label,

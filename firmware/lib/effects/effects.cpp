@@ -52,8 +52,11 @@ RGB renderCue(const Cue& cue, uint32_t elapsedMs) {
     }
 
     case EFFECT_BREATHE: {
-      // period = (param1==0?100:param1)*10 ms; env = (1 - cos(2π·phase))/2.
-      uint32_t period = (uint32_t)(cue.param1 == 0 ? 100 : cue.param1) * 10u;
+      // 16-bit period: units = param1 | (param2<<8), in 10ms steps (0 => 100). Lets a breathe
+      // run far slower than the 2.55s a single u8 allowed. (STROBE still uses param1 only +
+      // param2 as duty.) period_ms = (units==0?100:units)*10; env = (1 - cos(2π·phase))/2.
+      uint32_t units  = (uint32_t)cue.param1 | ((uint32_t)cue.param2 << 8);
+      uint32_t period = (units == 0 ? 100u : units) * 10u;
       double phase = (double)(elapsedMs % period) / (double)period;
       double env   = (1.0 - std::cos(2.0 * PI_D * phase)) / 2.0;
       out.r = roundClamp((double)cue.colorA.r * bScale * env);

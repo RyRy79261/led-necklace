@@ -2,8 +2,18 @@
 
 import { Effect, type Cue, type RGB } from '@/lib/types';
 import { rgbCss } from './color';
-import { EFFECTS, effectMeta, periodMs, dutyFraction } from './effect-meta';
-import { ByteSlider, ColorField, DurationInput } from './fields';
+import {
+  EFFECTS,
+  effectMeta,
+  periodMs,
+  dutyFraction,
+  breathePeriodMs,
+  breatheParams,
+  defaultParamsForEffect,
+  BREATHE_PERIOD_MIN_MS,
+  BREATHE_PERIOD_MAX_MS,
+} from './effect-meta';
+import { ByteSlider, ColorField, DurationInput, PeriodSlider } from './fields';
 
 interface CueCardProps {
   index: number;
@@ -36,7 +46,8 @@ function Swatch({ cue }: { cue: Cue }) {
 function summary(cue: Cue): string {
   const parts: string[] = [`${cue.durationMs} ms`];
   if (cue.effect === Effect.Fade) parts.push('A → B');
-  if (cue.effect === Effect.Breathe) parts.push(`${periodMs(cue.param1)} ms period`);
+  if (cue.effect === Effect.Breathe)
+    parts.push(`${(breathePeriodMs(cue.param1, cue.param2) / 1000).toFixed(1)} s breathe`);
   if (cue.effect === Effect.Strobe)
     parts.push(`${periodMs(cue.param1)} ms · ${Math.round(dutyFraction(cue.param2) * 100)}% duty`);
   parts.push(`bright ${cue.brightness}`);
@@ -125,7 +136,12 @@ export function CueCard({
             <div className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">Effect</div>
             <select
               value={cue.effect}
-              onChange={(e) => set('effect', Number(e.target.value) as Effect)}
+              onChange={(e) => {
+                const effect = Number(e.target.value) as Effect;
+                // param1/param2 mean different things per effect (esp. BREATHE now uses param2 as
+                // its period high byte) — reset to sane defaults on switch to avoid stale values.
+                onChange({ ...cue, effect, ...defaultParamsForEffect(effect) });
+              }}
               aria-label="Effect"
               className="w-full rounded-md border border-stage-border bg-stage-bg px-2.5 py-2 text-sm text-neutral-100 focus:border-stage-accent focus:outline-none"
             >
@@ -156,22 +172,33 @@ export function CueCard({
             onChange={(v) => set('durationMs', v)}
           />
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <ByteSlider
-              label={meta.param1Label}
-              hint={param1Hint}
-              value={cue.param1}
-              disabled={!meta.usesParam1}
-              onChange={(v) => set('param1', v)}
+          {cue.effect === Effect.Breathe ? (
+            <PeriodSlider
+              label="Breathe period"
+              hint={`${(breathePeriodMs(cue.param1, cue.param2) / 1000).toFixed(1)} s per breath`}
+              valueMs={breathePeriodMs(cue.param1, cue.param2)}
+              minMs={BREATHE_PERIOD_MIN_MS}
+              maxMs={BREATHE_PERIOD_MAX_MS}
+              onChangeMs={(ms) => onChange({ ...cue, ...breatheParams(ms) })}
             />
-            <ByteSlider
-              label={meta.param2Label}
-              hint={param2Hint}
-              value={cue.param2}
-              disabled={!meta.usesParam2}
-              onChange={(v) => set('param2', v)}
-            />
-          </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ByteSlider
+                label={meta.param1Label}
+                hint={param1Hint}
+                value={cue.param1}
+                disabled={!meta.usesParam1}
+                onChange={(v) => set('param1', v)}
+              />
+              <ByteSlider
+                label={meta.param2Label}
+                hint={param2Hint}
+                value={cue.param2}
+                disabled={!meta.usesParam2}
+                onChange={(v) => set('param2', v)}
+              />
+            </div>
+          )}
 
           <ByteSlider
             label="Brightness"

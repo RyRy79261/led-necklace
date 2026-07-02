@@ -5,8 +5,8 @@ export interface Cue {
   durationMs: number;
   colorA: RGB;
   colorB: RGB;
-  param1: number;     // 0..255
-  param2: number;     // 0..255
+  param1: number;     // 0..255 — STROBE period / BREATHE period low byte
+  param2: number;     // 0..255 — STROBE duty / BREATHE period high byte
   brightness: number; // 0..255
 }
 export interface Sequence {

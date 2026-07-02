@@ -28,8 +28,8 @@ v2 (reserved, do NOT implement now): 4=CHASE, 5=PALETTE.
 | durationMs   | u32  | 4     | how long the cue is held in AUTO mode |
 | colorA (rgb) | u8×3 | 3     | primary colour, order R,G,B |
 | colorB (rgb) | u8×3 | 3     | secondary colour (FADE only; else ignored) |
-| param1       | u8   | 1     | BREATHE/STROBE period, in **units of 10 ms** (period_ms = param1×10). 0 ⇒ treat as 100 |
-| param2       | u8   | 1     | STROBE duty cycle 0..255 (fraction = param2/255). unused elsewhere |
+| param1       | u8   | 1     | STROBE period (units of 10 ms, period_ms=param1×10). BREATHE: **low byte** of a 16-bit period (see §3) |
+| param2       | u8   | 1     | STROBE duty cycle 0..255 (fraction = param2/255). BREATHE: **high byte** of the 16-bit period (§3). unused for SOLID/FADE |
 | brightness   | u8   | 1     | per-cue max brightness 0..255 |
 | reserved     | u8×2 | 2     | zero-filled |
 
@@ -103,10 +103,12 @@ where `env` depends on the effect. **Rounding is round-half-up.** Clamp to [0,25
 - **FADE**: `f = clamp(elapsedMs / durationMs, 0, 1)`; pixel channel =
   `round( (colorA_ch*(1-f) + colorB_ch*f) * bScale )`. (Linear RGB lerp; perceptual
   nicety deferred.) If durationMs==0, f=1.
-- **BREATHE**: `period = (param1==0?100:param1)*10` ms;
+- **BREATHE**: `units = param1 | (param2<<8)` (16-bit, in units of 10 ms — lets a breathe run
+  far slower than a single u8's 2.55 s max); `period = (units==0?100:units)*10` ms;
   `phase = (elapsedMs mod period) / period`;
   `env = (1 - cos(2π*phase)) / 2`  → env=0 at phase 0, env=1 at phase 0.5.
-  pixel = colorA * bScale * env.
+  pixel = colorA * bScale * env. Backward-compatible: an old cue with `param2==0` gives the
+  same period as before. (STROBE below still uses param1 as period + param2 as duty.)
 - **STROBE**: `period = (param1==0?100:param1)*10` ms; `duty = param2/255`;
   `on = (elapsedMs mod period) < duty*period`;
   pixel = on ? (colorA * bScale) : (0,0,0).

@@ -39,7 +39,10 @@ export function renderCue(cue: Cue, elapsedMs: number): RGB[] {
       break;
     }
     case Effect.Breathe: {
-      const period = (cue.param1 === 0 ? 100 : cue.param1) * 10;
+      // 16-bit period: units = param1 | (param2<<8), in 10ms steps (0 => 100). Lets a breathe
+      // run far slower than a single u8's 2.55s. (Strobe still uses param1 only + param2 as duty.)
+      const units = cue.param1 | (cue.param2 << 8);
+      const period = (units === 0 ? 100 : units) * 10;
       const phase = (elapsedMs % period) / period;
       const env = (1 - Math.cos(2 * Math.PI * phase)) / 2; // 0 at phase 0, 1 at phase 0.5
       color = [

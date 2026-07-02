@@ -26,8 +26,8 @@ struct Cue {
   uint32_t durationMs;  // how long the cue is held in AUTO mode
   RGB      colorA;      // primary colour (R,G,B)
   RGB      colorB;      // secondary colour (FADE only; else ignored)
-  uint8_t  param1;      // BREATHE/STROBE period in units of 10 ms (period_ms = param1*10; 0 => 100)
-  uint8_t  param2;      // STROBE duty cycle 0..255 (fraction = param2/255); unused elsewhere
+  uint8_t  param1;      // STROBE period (10ms units); BREATHE period LOW byte (16-bit with param2)
+  uint8_t  param2;      // STROBE duty 0..255 (param2/255); BREATHE period HIGH byte; unused SOLID/FADE
   uint8_t  brightness;  // per-cue max brightness 0..255
 };
 
