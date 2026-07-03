@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import './globals.css';
+import { RemoteProvider } from '@/components/remote/RemoteProvider';
 
 export const metadata: Metadata = {
   title: 'Necklace',
@@ -38,7 +39,9 @@ export default function RootLayout({
             ))}
           </nav>
         </header>
-        <main className="mx-auto max-w-4xl px-4 py-8">{children}</main>
+        <main className="mx-auto max-w-4xl px-4 py-8">
+          <RemoteProvider>{children}</RemoteProvider>
+        </main>
       </body>
     </html>
   );

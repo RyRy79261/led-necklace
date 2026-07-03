@@ -5,22 +5,7 @@ import { CUE_BYTES, HEADER_BYTES, PIXEL_COUNT, type Cue, type Sequence } from '@
 import { encodeSequence } from '@/lib/codec';
 import { CueCard } from './CueCard';
 import { loadSequence, makeCue, sanitizeSequence, saveSequence } from './sequence-storage';
-
-/**
- * Minimal structural view of a transport, so the editor never has to import the
- * BLE module directly. The editor page renders without one, so the upload button
- * is disabled until a transport is wired in later.
- */
-export interface EditorUploader {
-  isConnected?(): boolean;
-  uploadSequence(bytes: Uint8Array, onProgress?: (frac: number) => void): Promise<void>;
-  /** Optional: push the loop on/off setting (BLE SET_LOOP). Called after an upload. */
-  setLoop?(loop: boolean): Promise<void>;
-}
-
-export interface CueListEditorProps {
-  uploader?: EditorUploader | null;
-}
+import { useRemote } from '@/components/remote/RemoteProvider';
 
 interface CueItem {
   id: string;
@@ -75,7 +60,8 @@ WHAT I WANT:
 CURRENT SEQUENCE:
 `;
 
-export function CueListEditor({ uploader = null }: CueListEditorProps) {
+export function CueListEditor() {
+  const remote = useRemote(); // app-wide BLE/mock transport (shared with the Remote screen)
   const [items, setItems] = useState<CueItem[]>([]);
   const [pixelCount, setPixelCount] = useState<number>(PIXEL_COUNT);
   const [loopEnabled, setLoopEnabled] = useState(true);
@@ -110,7 +96,7 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
     try {
       return encodeSequence(sequence).length;
     } catch {
-      // Codec not wired yet: fall back to the documented layout size.
+      // Defensive fallback if encoding ever throws (it shouldn't): documented layout size.
       return HEADER_BYTES + CUE_BYTES * items.length;
     }
   }, [sequence, items.length]);
@@ -237,7 +223,6 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
   }, [sequence]);
 
   const handleUpload = useCallback(async () => {
-    if (!uploader) return;
     let bytes: Uint8Array;
     try {
       bytes = encodeSequence(sequence);
@@ -248,18 +233,17 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
     setUploadState('busy');
     setNotice({ kind: 'info', text: 'Uploading to device…' });
     try {
-      await uploader.uploadSequence(bytes);
-      await uploader.setLoop?.(loopEnabled);
+      await remote.uploadSequence(bytes);
+      remote.setLoop(loopEnabled); // sync the loop choice to the device with the show
       setNotice({ kind: 'success', text: `Uploaded ${bytes.length} bytes to the necklace.` });
-    } catch {
-      setNotice({ kind: 'error', text: 'Upload failed.' });
+    } catch (err) {
+      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Upload failed.' });
     } finally {
       setUploadState('idle');
     }
-  }, [uploader, sequence, loopEnabled]);
+  }, [remote, sequence, loopEnabled]);
 
-  const uploadReady = Boolean(uploader && (uploader.isConnected?.() ?? true));
-  const uploadDisabled = !uploadReady || items.length === 0 || uploadState === 'busy';
+  const uploadDisabled = !remote.connected || items.length === 0 || uploadState === 'busy';
 
   const btn =
     'rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40';
@@ -294,7 +278,10 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
           <input
             type="checkbox"
             checked={loopEnabled}
-            onChange={(e) => setLoopEnabled(e.target.checked)}
+            onChange={(e) => {
+              setLoopEnabled(e.target.checked);
+              if (remote.connected) remote.setLoop(e.target.checked); // live-sync to the device
+            }}
             className="accent-stage-accent"
           />
           Loop
@@ -317,11 +304,9 @@ export function CueListEditor({ uploader = null }: CueListEditorProps) {
             onClick={handleUpload}
             disabled={uploadDisabled}
             title={
-              uploader
-                ? uploadReady
-                  ? 'Upload the encoded sequence to the connected necklace'
-                  : 'Device is not connected'
-                : 'Connect a device on the Remote screen to enable upload'
+              remote.connected
+                ? 'Upload the encoded sequence to the connected necklace'
+                : 'Not connected — connect on the Remote screen first (or use Mock mode)'
             }
           >
             {uploadState === 'busy' ? 'Uploading…' : 'Upload to device'}

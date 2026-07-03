@@ -5,11 +5,13 @@ import { ConnectionBar } from '@/components/remote/ConnectionBar';
 import { ControlPad } from '@/components/remote/ControlPad';
 import { ModeToggle } from '@/components/remote/ModeToggle';
 import { StatusReadout } from '@/components/remote/StatusReadout';
-import { useRemote } from '@/components/remote/useRemote';
+import { useState } from 'react';
+import { useRemote } from '@/components/remote/RemoteProvider';
 
 /** Live remote for the necklace: play/stop/next/blackout, brightness, link. */
 export function RemoteConsole() {
   const remote = useRemote();
+  const [loop, setLoop] = useState(true);
 
   return (
     <div className="space-y-6">
@@ -65,6 +67,20 @@ export function RemoteConsole() {
         disabled={!remote.connected}
         onChange={remote.setBrightness}
       />
+
+      <label className="flex items-center gap-3 rounded-lg border border-stage-border bg-stage-panel px-4 py-3 text-sm text-neutral-200">
+        <input
+          type="checkbox"
+          checked={loop}
+          disabled={!remote.connected}
+          onChange={(e) => {
+            setLoop(e.target.checked);
+            remote.setLoop(e.target.checked);
+          }}
+          className="accent-stage-accent"
+        />
+        Loop the show (repeat at the end instead of stopping)
+      </label>
     </div>
   );
 }

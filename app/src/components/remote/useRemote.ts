@@ -60,11 +60,18 @@ export interface UseRemote {
   play: () => void;
   stop: () => void;
   next: () => void;
+  prev: () => void;
+  goto: (cueIndex: number) => void;
   blackout: () => void;
   setBrightness: (value: number) => void;
+  setLoop: (value: boolean) => void;
+  uploadSequence: (bytes: Uint8Array, onProgress?: (frac: number) => void) => Promise<void>;
 }
 
-export function useRemote(): UseRemote {
+// The transport-owning controller. Instantiated ONCE by RemoteProvider so the whole app shares a
+// single BLE connection (the device is single-connection). Components call useRemote() (the
+// context consumer in RemoteProvider) rather than this directly.
+export function useRemoteController(): UseRemote {
   const [mode, setModeState] = useState<TransportMode>('mock');
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -227,7 +234,19 @@ export function useRemote(): UseRemote {
   const play = useCallback(() => send({ op: 'play', mode: 'auto' }), [send]);
   const stop = useCallback(() => send({ op: 'stop' }), [send]);
   const next = useCallback(() => send({ op: 'next' }), [send]);
+  const prev = useCallback(() => send({ op: 'prev' }), [send]);
+  const goto = useCallback((cueIndex: number) => send({ op: 'goto', cueIndex }), [send]);
   const blackout = useCallback(() => send({ op: 'blackout' }), [send]);
+  const setLoop = useCallback((value: boolean) => send({ op: 'setLoop', value }), [send]);
+
+  const uploadSequence = useCallback(
+    async (bytes: Uint8Array, onProgress?: (frac: number) => void) => {
+      const transport = transportRef.current;
+      if (!transport || !transport.isConnected()) throw new Error('Necklace not connected');
+      await transport.uploadSequence(bytes, onProgress);
+    },
+    [],
+  );
 
   // Trailing throttle: fire immediately, then at most once per window with the
   // latest value, so a fast drag never floods the link but always lands final.
@@ -277,7 +296,11 @@ export function useRemote(): UseRemote {
     play,
     stop,
     next,
+    prev,
+    goto,
     blackout,
     setBrightness,
+    setLoop,
+    uploadSequence,
   };
 }
